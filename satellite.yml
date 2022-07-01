@@ -1,0 +1,87 @@
+name: Satellite
+description: Install Red Hat Satellite
+schemaVersion: 1.0
+constants:
+  - rh_acct:
+      type: string
+      value: <org-id>
+
+phases:
+  - name: build
+    steps:
+      - name: DownloadManifest
+        action: S3Download
+        inputs:
+          - source: s3://ec2imagebuilder-wtome/manifest.zip
+            destination: /tmp/manifest.zip
+
+      - name: DownloadEPEL
+        action: WebDownload
+        maxAttempts: 3
+        inputs:
+          - source: https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+            destination: /tmp/epel-release-latest-7.noarch.rpm
+
+      - name: InstallGit
+        action: ExecuteBash
+        inputs:
+          commands:
+            - yum install -y git
+
+      - name: InstallEPEL
+        action: ExecuteBash
+        inputs:
+          commands:
+            - yum install -y /tmp/epel-release-latest-7.noarch.rpm
+
+      - name: InstallAnsible
+        action: ExecuteBash
+        inputs:
+          commands:
+            - yum install -y ansible
+
+      - name: CloneRepo
+        action: ExecuteBash
+        timeoutSeconds: -1
+        maxAttempts: 3
+        inputs:
+          commands:
+            - git clone https://github.com/willtome/ec2-image-build.git
+            #- cd ec2-image-build
+            #- ./scripts/install_collections.sh
+
+      - name: RemoveEPEL
+        action: ExecuteBash
+        inputs:
+          commands:
+            - yum remove -y epel-release
+
+      - name: DeleteEPEL
+        action: DeleteFile
+        inputs:
+          - path: /tmp/epel-release-latest-7.noarch.rpm
+
+      - name: RunPlaybook
+        action: ExecuteBash
+        inputs:
+          commands:
+            - ansible-playbook ec2-image-build/ansible/satellite.yml -e org_id={{rh_acct}}
+
+      - name: DeleteGitRepo
+        action: DeleteFolder
+        inputs:
+          - path: /tmp/ec2-image-build
+            force: true
+
+      - name: DeleteManifest
+        action: DeleteFile
+        inputs:
+          - path: /tmp/manifest.zip
+  
+  - name: validate
+    steps:
+      - name: RunHealthCheck
+        action: ExecuteBash
+        inputs:
+          commands:
+            - satellite-maintain health check
